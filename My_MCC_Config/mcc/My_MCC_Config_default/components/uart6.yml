@@ -108,4 +108,15 @@ data:
           type: Dynamic
         type: Values
       type: Hex
+    UART_CLOCK_FREQ:
+      attributes:
+        id: UART_CLOCK_FREQ
+      children:
+      - children:
+        - attributes:
+            id: uart6
+            value: '100000000'
+          type: Dynamic
+        type: Values
+      type: Integer
   userData: {}

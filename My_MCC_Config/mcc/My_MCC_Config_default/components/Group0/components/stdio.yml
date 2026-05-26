@@ -17,7 +17,7 @@ data:
   attachments: {}
   elementPosition:
     attributes:
-      id: __ROOTVIEW
+      id: Group0
     children:
     - children:
       - attributes:
