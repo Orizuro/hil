@@ -39,7 +39,7 @@ void TIMER2_EventHandler(uint32_t status, uintptr_t context)
     /* Toggle LED */
     LED_Toggle();
 
-    char myData[] = {"hello\r\n"};
+    char myData[] = "hello\r\n";
 
     // This API blocks until the requested bytes are transmitted out
     UART6_Write(&myData, sizeof(myData));

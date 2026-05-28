@@ -120,8 +120,44 @@ class MdbLibrary:
 
     @keyword("Connect Pkob4")
     def connect_pkob4(self, device: str) -> None:
-        """Select the target device and the on-board PKoB4 hardware tool."""
+        """Select the target device and the configured bench.
+
+        Honors the ``TEJOONE_BENCH`` environment variable:
+
+        * unset or ``pkob4`` (default): on-board PKoB4 hardware debugger.
+        * ``sim``: MPLAB Simulator, no physical board required.
+
+        The keyword name is kept as ``Connect Pkob4`` for backward
+        compatibility with existing suites; the actual bench is selected by
+        the runner (typically the TejoOne VS Code extension, which sets
+        ``TEJOONE_BENCH`` before invoking Robot). Test authors don't have
+        to think about which bench is active.
+        """
+        bench = os.environ.get("TEJOONE_BENCH", "pkob4").lower()
+        if bench not in ("pkob4", "sim"):
+            raise MdbError(
+                f"Unknown TEJOONE_BENCH value: {bench!r}. "
+                "Expected 'sim' or 'pkob4' (or unset for default)."
+            )
+        logger.info(
+                bench
+            )
         self._send(f"Device {device}", timeout=15)
+
+        if bench == "sim":
+            # The simulator does not emit a stable "Target device ... found"
+            # banner the way the PKoB4 path does, so we don't try to verify
+            # selection here. If ``Hwtool sim`` failed, the very next
+            # ``Program`` / ``Halt`` / ``Print`` call will surface the
+            # failure with a clear message.
+            self._send("Hwtool sim", timeout=30)
+            logger.info(
+                "Connected to MPLAB Simulator (TEJOONE_BENCH=sim). "
+                "No physical board required."
+            )
+            return
+
+        # bench == "pkob4"
         # Selecting the tool can take a few seconds while MDB enumerates USB.
         # MDB's Java logging is noisy and full of words like "error" in
         # benign contexts, so we verify success by looking for the explicit
@@ -133,6 +169,7 @@ class MdbLibrary:
                 "Make sure the board is plugged in and no other MPLAB X / "
                 f"VS Code debug session is attached. MDB output:\n{out}"
             )
+        logger.info("Connected to on-board PKoB4 debugger.")
 
     # ------------------------------------------------------------------ #
     # Programming and run control                                        #

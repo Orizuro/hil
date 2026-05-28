@@ -25,8 +25,8 @@ LATJ Matches MCC Configuration
 
     ...                must equal the value set by MCC on LATJ7 (80).
     Run
-    Sleep              5.05
-    Halt
+    Sleep              5.00
+    #Halt
     ${value}=         Read Symbol    LATJ
     Should Be Equal As Integers      ${value}    ${EXPECTED_LATJ}
 

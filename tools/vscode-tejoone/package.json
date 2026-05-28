@@ -1,0 +1,88 @@
+{
+  "name": "tejoone-bench",
+  "displayName": "TejoOne Bench",
+  "description": "Bench selector (PKoB4 hardware vs. MPLAB Simulator) and Robot test runner for the TejoOne PIC32MZ project.",
+  "version": "0.1.0",
+  "publisher": "tejoone",
+  "private": true,
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "internal"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Testing"
+  ],
+  "activationEvents": [
+    "workspaceContains:.vscode/TejoOne.mplab.json",
+    "onLanguage:robotframework"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "tejoone.pickBench",
+        "title": "TejoOne: Pick Bench…"
+      },
+      {
+        "command": "tejoone.switchBenchToSim",
+        "title": "TejoOne: Switch Bench → Simulator"
+      },
+      {
+        "command": "tejoone.switchBenchToHardware",
+        "title": "TejoOne: Switch Bench → Hardware (PKoB4)"
+      },
+      {
+        "command": "tejoone.runTests",
+        "title": "TejoOne: Run Robot Tests (current bench)"
+      },
+      {
+        "command": "tejoone.runTestsOnSim",
+        "title": "TejoOne: Run Robot Tests on Simulator"
+      },
+      {
+        "command": "tejoone.runTestsOnHardware",
+        "title": "TejoOne: Run Robot Tests on Hardware (PKoB4)"
+      }
+    ],
+    "configuration": {
+      "title": "TejoOne",
+      "properties": {
+        "tejoone.bench": {
+          "type": "string",
+          "enum": [
+            "sim",
+            "pkob4"
+          ],
+          "enumDescriptions": [
+            "MPLAB Simulator — no physical board required.",
+            "On-board PKoB4 hardware debugger — requires the real PIC32MZ board."
+          ],
+          "default": "pkob4",
+          "description": "Which bench Robot tests should run against. Sets the TEJOONE_BENCH environment variable when Robot is invoked."
+        },
+        "tejoone.robotCommand": {
+          "type": "string",
+          "default": "${workspaceFolder}/.venv/bin/robot tests/",
+          "description": "Shell command used to invoke Robot Framework. ${workspaceFolder} is substituted. Override if your venv lives elsewhere or you want extra robot flags."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3",
+    "@vscode/vsce": "^2.24.0"
+  }
+}

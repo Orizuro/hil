@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot generator="Robot 7.4.2 (Python 3.12.3 on linux)" generated="2026-05-27T00:58:44.548297" rpa="false" schemaversion="5">
+<suite id="s1" name="Tests" source="/home/alexandre/MPLABProjects/TejoOne/tests">
+<suite id="s1-s1" name="Smoke" source="/home/alexandre/MPLABProjects/TejoOne/tests/smoke.robot">
+<kw name="Connect And Program Target" type="SETUP">
+<kw name="Start Mdb" owner="MdbLibrary">
+<msg time="2026-05-27T00:58:44.565456" level="INFO">Launching MDB: /opt/microchip/mplabx/v6.30/mplab_platform/bin/mdb.sh</msg>
+<doc>Spawn mdb.sh and wait for its first prompt.</doc>
+<status status="PASS" start="2026-05-27T00:58:44.565301" elapsed="1.431985"/>
+</kw>
+<kw name="Connect Pkob4" owner="MdbLibrary">
+<msg time="2026-05-27T00:58:45.997607" level="INFO">pkob4</msg>
+<msg time="2026-05-27T00:58:47.745528" level="INFO">Connected to on-board PKoB4 debugger.</msg>
+<arg>${DEVICE}</arg>
+<doc>Select the target device and the configured bench.</doc>
+<status status="PASS" start="2026-05-27T00:58:45.997442" elapsed="1.748191"/>
+</kw>
+<kw name="Program" owner="MdbLibrary">
+<arg>${ELF}</arg>
+<doc>Program the target with the given .elf file.</doc>
+<status status="PASS" start="2026-05-27T00:58:47.745738" elapsed="2.751179"/>
+</kw>
+<status status="PASS" start="2026-05-27T00:58:44.565110" elapsed="5.931909"/>
+</kw>
+<test id="s1-s1-t1" name="LATJ Matches MCC Configuration" line="23">
+<kw name="Run" owner="MdbLibrary">
+<doc>Resume target execution.</doc>
+<status status="PASS" start="2026-05-27T00:58:50.497374" elapsed="0.005572"/>
+</kw>
+<kw name="Sleep" owner="BuiltIn">
+<msg time="2026-05-27T00:58:55.553329" level="INFO">Slept 5 seconds 50 milliseconds.</msg>
+<arg>5.05</arg>
+<doc>Pauses the test executed for the given time.</doc>
+<status status="PASS" start="2026-05-27T00:58:50.503031" elapsed="5.050382"/>
+</kw>
+<kw name="Halt" owner="MdbLibrary">
+<doc>Halt the target CPU.</doc>
+<status status="PASS" start="2026-05-27T00:58:55.553560" elapsed="0.110067"/>
+</kw>
+<kw name="Read Symbol" owner="MdbLibrary">
+<msg time="2026-05-27T00:58:55.673175" level="INFO">LATJ = 80 (0x50)</msg>
+<msg time="2026-05-27T00:58:55.673306" level="INFO">${value} = 80</msg>
+<var>${value}</var>
+<arg>LATJ</arg>
+<doc>Read a symbol (C variable or named SFR) and return its integer value.</doc>
+<status status="PASS" start="2026-05-27T00:58:55.663762" elapsed="0.009576"/>
+</kw>
+<kw name="Should Be Equal As Integers" owner="BuiltIn">
+<arg>${value}</arg>
+<arg>${EXPECTED_LATJ}</arg>
+<doc>Fails if objects are unequal after converting them to integers.</doc>
+<status status="PASS" start="2026-05-27T00:58:55.673443" elapsed="0.000242"/>
+</kw>
+<doc>After programming, the LATJ register
+must equal the value set by MCC on LATJ7 (80).</doc>
+<status status="PASS" start="2026-05-27T00:58:50.497074" elapsed="5.176694"/>
+</test>
+<kw name="Run Keyword And Ignore Error" owner="BuiltIn" type="TEARDOWN">
+<kw name="Quit" owner="MdbLibrary">
+<doc>Send 'Quit' to MDB and wait for the process to exit.</doc>
+<status status="PASS" start="2026-05-27T00:58:55.674234" elapsed="1.466766"/>
+</kw>
+<arg>Quit</arg>
+<doc>Runs the given keyword with the given arguments and ignores possible error.</doc>
+<status status="PASS" start="2026-05-27T00:58:55.674049" elapsed="1.467057"/>
+</kw>
+<doc>Smoke test for the TejoOne firmware via MPLAB PKoB4.
+
+Drives the on-board PKoB4 debugger through MDB. Programs the
+target with the current default.elf and reads the PR2 Timer 2
+period register to confirm it matches the value set by the
+MCC configuration.
+
+IMPORTANT: Close any active MPLAB X / VS Code debug session
+before running this suite. Only one client can own the PKoB4
+at a time.</doc>
+<status status="PASS" start="2026-05-27T00:58:44.563104" elapsed="12.578043"/>
+</suite>
+<status status="PASS" start="2026-05-27T00:58:44.548734" elapsed="12.593062"/>
+</suite>
+<statistics>
+<total>
+<stat pass="1" fail="0" skip="0">All Tests</stat>
+</total>
+<tag>
+</tag>
+<suite>
+<stat name="Tests" id="s1" pass="1" fail="0" skip="0">Tests</stat>
+<stat name="Smoke" id="s1-s1" pass="1" fail="0" skip="0">Tests.Smoke</stat>
+</suite>
+</statistics>
+<errors>
+</errors>
+</robot>

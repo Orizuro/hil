@@ -25,7 +25,8 @@ set(TejoOne_default_default_XC32_FILE_TYPE_compile
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../My_MCC_Config/src/config/default/peripheral/tmr/plib_tmr2.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../My_MCC_Config/src/config/default/peripheral/uart/plib_uart6.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../My_MCC_Config/src/config/default/stdio/xc32_monitor.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../My_MCC_Config/src/main.c")
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../My_MCC_Config/src/main.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/vscode-tejoone/node_modules/node-addon-api/nothing.c")
 set_source_files_properties(${TejoOne_default_default_XC32_FILE_TYPE_compile} PROPERTIES LANGUAGE C)
 set(TejoOne_default_default_XC32_FILE_TYPE_compile_cpp)
 set_source_files_properties(${TejoOne_default_default_XC32_FILE_TYPE_compile_cpp} PROPERTIES LANGUAGE CXX)
