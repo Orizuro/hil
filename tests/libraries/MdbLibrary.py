@@ -37,11 +37,13 @@ Notes
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import select
 import subprocess
 import time
+from pathlib import Path
 from typing import Optional
 
 from robot.api import logger
@@ -51,9 +53,70 @@ from robot.api.deco import keyword
 DEFAULT_MDB_PATH = "/opt/microchip/mplabx/v6.30/mplab_platform/bin/mdb.sh"
 PROMPT = ">"
 
+# Project-local state directory written by the TejoOne VS Code extension.
+# The library reads bench selection from here when ``TEJOONE_BENCH`` isn't
+# set in the environment -- this lets the Robot Framework Test Explorer
+# (which spawns ``robot`` directly without going through our extension's
+# terminal) still honour the IDE's bench choice.
+STATE_DIR_NAME = ".tejoone"
+STATE_FILE_NAME = "state.json"
+VALID_BENCHES = ("pkob4", "sim")
+
 
 class MdbError(RuntimeError):
     """Raised when MDB returns an error or the subprocess misbehaves."""
+
+
+def _read_state_file_bench() -> Optional[str]:
+    """Look for ``.tejoone/state.json`` in the current project tree.
+
+    Walks up from the current working directory until either the file is
+    found or a ``.git`` directory (project boundary) is reached. Returns
+    the ``bench`` value if present and valid, otherwise ``None``.
+    """
+    here = Path.cwd().resolve()
+    for parent in (here, *here.parents):
+        candidate = parent / STATE_DIR_NAME / STATE_FILE_NAME
+        if candidate.is_file():
+            try:
+                with open(candidate, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warn(
+                    f"Found {candidate} but could not parse it: {e}. "
+                    "Ignoring and falling through to default."
+                )
+                return None
+            bench = data.get("bench") if isinstance(data, dict) else None
+            if isinstance(bench, str) and bench.lower() in VALID_BENCHES:
+                return bench.lower()
+            return None
+        # Stop walking at the project root.
+        if (parent / ".git").exists():
+            break
+    return None
+
+
+def _resolve_bench() -> str:
+    """Pick the active bench.
+
+    Precedence:
+      1. ``TEJOONE_BENCH`` environment variable (set explicitly by the
+         user or by the TejoOne VS Code extension when running tests
+         through its own commands).
+      2. ``.tejoone/state.json`` in the project tree (written by the
+         extension on every bench switch; read here so that test runs
+         spawned outside the extension -- e.g. the Robot Framework Test
+         Explorer -- still honour the current selection).
+      3. Default: ``pkob4``.
+    """
+    env_value = os.environ.get("TEJOONE_BENCH")
+    if env_value:
+        return env_value.strip().lower()
+    state_value = _read_state_file_bench()
+    if state_value:
+        return state_value
+    return "pkob4"
 
 
 class MdbLibrary:
@@ -122,22 +185,26 @@ class MdbLibrary:
     def connect_pkob4(self, device: str) -> None:
         """Select the target device and the configured bench.
 
-        Honors the ``TEJOONE_BENCH`` environment variable:
+        Bench is resolved with the following precedence:
 
-        * unset or ``pkob4`` (default): on-board PKoB4 hardware debugger.
-        * ``sim``: MPLAB Simulator, no physical board required.
+        1. ``TEJOONE_BENCH`` environment variable.
+        2. ``.tejoone/state.json`` written by the TejoOne VS Code
+           extension (so non-extension runners -- the Robot Framework
+           Test Explorer, CI, a plain terminal -- still honour the
+           IDE's bench choice).
+        3. Default: ``pkob4`` (on-board hardware debugger).
 
-        The keyword name is kept as ``Connect Pkob4`` for backward
-        compatibility with existing suites; the actual bench is selected by
-        the runner (typically the TejoOne VS Code extension, which sets
-        ``TEJOONE_BENCH`` before invoking Robot). Test authors don't have
-        to think about which bench is active.
+        Valid values are ``pkob4`` and ``sim``. The keyword name is
+        kept as ``Connect Pkob4`` for backward compatibility with
+        existing suites; the actual bench is decided externally so
+        test authors don't have to think about which one is active.
         """
-        bench = os.environ.get("TEJOONE_BENCH", "pkob4").lower()
-        if bench not in ("pkob4", "sim"):
+        bench = _resolve_bench()
+        if bench not in VALID_BENCHES:
             raise MdbError(
-                f"Unknown TEJOONE_BENCH value: {bench!r}. "
-                "Expected 'sim' or 'pkob4' (or unset for default)."
+                f"Unknown bench value: {bench!r}. "
+                f"Expected one of {VALID_BENCHES} (set TEJOONE_BENCH "
+                "or write .tejoone/state.json)."
             )
         logger.info(
                 bench

@@ -2,7 +2,7 @@
 .vscode
 _build/
 results/
-
+.tejoone
 .generated_files/
 build/
 dist/

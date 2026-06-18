@@ -1,15 +1,26 @@
 import * as vscode from 'vscode';
+import { Bench, readBenchState, writeBenchState } from './state';
+import { BenchTreeProvider } from './benchView';
 
 /**
  * TejoOne Bench extension.
  *
- * Wraps the `TEJOONE_BENCH` environment variable with a status-bar
- * selector and one-click "Run Robot Tests" commands. The test code
- * (Robot suites and the MdbLibrary wrapper) is bench-agnostic: this
- * extension just decides which bench to point it at.
+ * Owns the "which bench am I running tests on" state for the workspace.
+ * That state is exposed in three places so every Robot runner sees it:
+ *
+ *   1. TEJOONE_BENCH env var, set by our own "Run Robot Tests" commands.
+ *   2. <workspace>/.tejoone/state.json, written on every bench change.
+ *      Read by MdbLibrary.py when the env var isn't set — this is what
+ *      lets the Robot Framework Test Explorer (which spawns `robot`
+ *      directly) honour the IDE's bench choice.
+ *   3. The "tejoone.bench" workspace setting (so the user can also
+ *      change it through Settings UI).
+ *
+ * UI surfaces:
+ *   - Status bar item, right side: "Bench: hardware" or "Bench: simulator".
+ *   - Activity-bar tab ("TejoOne") with a Bench tree view + title actions.
+ *   - CodeLens at the top of .robot files: Run on sim / Run on hardware.
  */
-
-type Bench = 'sim' | 'pkob4';
 
 const CONFIG_NAMESPACE = 'tejoone';
 const BENCH_SETTING = 'bench';
@@ -28,12 +39,13 @@ function currentBench(): Bench {
 
 async function setBench(bench: Bench): Promise<void> {
     const cfg = getConfig();
-    // Prefer Workspace scope so each workspace remembers its own bench.
-    // Fall back to Global if no workspace is open (e.g. for ad-hoc command runs).
     const target = vscode.workspace.workspaceFolders
         ? vscode.ConfigurationTarget.Workspace
         : vscode.ConfigurationTarget.Global;
     await cfg.update(BENCH_SETTING, bench, target);
+    // The configuration listener in activate() handles status-bar refresh,
+    // tree refresh, and the state-file write — keeping all reactions in
+    // one place avoids races between this update and the listener.
 }
 
 function robotCommand(): string {
@@ -52,7 +64,6 @@ function resolveVariables(input: string, folder: vscode.WorkspaceFolder | undefi
  * group results in the results/ tree. Examples:
  *   ".venv/bin/robot tests/"            -> "tests"
  *   ".venv/bin/robot tests/smoke.robot" -> "smoke"
- *   ".venv/bin/robot --include hil tests/integration/" -> "integration"
  *
  * Falls back to "default" if we can't make sense of the command.
  */
@@ -65,19 +76,13 @@ function deriveSuiteSlug(robotCmd: string): string {
     if (!last || last.startsWith('-')) {
         return 'default';
     }
-    const cleaned = last.replace(/[/\\]+$/, ''); // trim trailing slashes
+    const cleaned = last.replace(/[/\\]+$/, '');
     const base = cleaned.split(/[/\\]/).pop() ?? cleaned;
     const slug = base.replace(/\.robot$/, '').trim();
     return slug || 'default';
 }
 
-/**
- * True if the configured robot command already specifies an output
- * directory; in that case we respect the user's choice and don't inject
- * one of our own via ROBOT_OPTIONS.
- */
 function userSpecifiesOutputDir(robotCmd: string): boolean {
-    // Match `-d <arg>`, `--outputdir <arg>`, `--outputdir=<arg>`.
     return /(^|\s)(-d|--outputdir)(\s|=)/.test(robotCmd);
 }
 
@@ -92,7 +97,6 @@ function benchHumanName(bench: Bench): string {
 }
 
 function activeWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
-    // Prefer the folder of the active editor (handles multi-root cleanly).
     const editor = vscode.window.activeTextEditor;
     if (editor) {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
@@ -105,14 +109,9 @@ function activeWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
 
 /**
  * Run the configured Robot command in a fresh terminal with TEJOONE_BENCH
- * set to the requested bench. A fresh terminal is intentional: it
- * guarantees the env is correct, and lets the user keep parallel
- * sim/hardware terminals visible in the panel.
- *
- * Result organization: unless the user explicitly passes -d/--outputdir
- * in their robotCommand, we set ROBOT_OPTIONS so output lands in
- *   <workspaceFolder>/results/<suite-slug>/<bench>/
- * Robot Framework auto-creates missing directories.
+ * set to the requested bench. ROBOT_OPTIONS is also injected to route
+ * output to results/<slug>/<bench>/ unless the user has already
+ * specified an output directory in their command.
  */
 function runRobot(bench: Bench): void {
     const folder = activeWorkspaceFolder();
@@ -126,25 +125,20 @@ function runRobot(bench: Bench): void {
     const rawCmd = robotCommand();
     const cmd = resolveVariables(rawCmd, folder);
 
-    let fullCmd = cmd;
-
-    // ROBOT_OPTIONS injection
+    const env: { [key: string]: string } = { TEJOONE_BENCH: bench };
     if (!userSpecifiesOutputDir(rawCmd)) {
         const slug = deriveSuiteSlug(rawCmd);
         const outputDir = `${folder.uri.fsPath}/results/${slug}/${bench}`;
-        fullCmd = `ROBOT_OPTIONS="--outputdir '${outputDir}'" ${fullCmd}`;
+        env.ROBOT_OPTIONS = `--outputdir "${outputDir}"`;
     }
-
-    // 🔥 CRITICAL FIX: THIS is what was missing
-    fullCmd = `TEJOONE_BENCH=${bench} ${fullCmd}`;
 
     const terminal = vscode.window.createTerminal({
         name: `Robot (${benchHumanName(bench)})`,
         cwd: folder.uri.fsPath,
+        env,
     });
-
     terminal.show();
-    terminal.sendText(fullCmd);
+    terminal.sendText(cmd);
 }
 
 class RobotCodeLensProvider implements vscode.CodeLensProvider {
@@ -159,8 +153,6 @@ class RobotCodeLensProvider implements vscode.CodeLensProvider {
         if (!document.fileName.endsWith('.robot')) {
             return [];
         }
-        // Place lenses at the very top of the file. Per-test-case lenses
-        // would need a Robot Framework parser; that's a v2 nicety.
         const range = new vscode.Range(0, 0, 0, 0);
         return [
             new vscode.CodeLens(range, {
@@ -172,6 +164,45 @@ class RobotCodeLensProvider implements vscode.CodeLensProvider {
                 command: 'tejoone.runTestsOnHardware',
             }),
         ];
+    }
+}
+
+/**
+ * Persist the current bench to <workspace>/.tejoone/state.json so that
+ * Robot runners outside this extension (Robot Framework Test Explorer,
+ * plain terminal, etc.) honour the same selection via MdbLibrary's
+ * file-fallback path.
+ */
+async function persistBenchToStateFile(bench: Bench): Promise<void> {
+    const folder = activeWorkspaceFolder();
+    if (!folder) {
+        return; // No workspace; nothing to persist.
+    }
+    try {
+        await writeBenchState(folder, bench);
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        vscode.window.showWarningMessage(
+            `TejoOne: failed to write .tejoone/state.json — ${msg}`
+        );
+    }
+}
+
+/**
+ * On activation, reconcile the workspace setting with whatever is on disk.
+ * If the state file exists and differs from the setting, the setting wins
+ * (it's user-facing, lives in settings.json, and is the source of truth);
+ * we rewrite the state file to match.
+ */
+async function reconcileStateOnActivation(): Promise<void> {
+    const folder = activeWorkspaceFolder();
+    if (!folder) {
+        return;
+    }
+    const settingBench = currentBench();
+    const fileBench = readBenchState(folder);
+    if (fileBench !== settingBench) {
+        await persistBenchToStateFile(settingBench);
     }
 }
 
@@ -191,24 +222,34 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBar.show();
     context.subscriptions.push(statusBar);
 
+    // ----- Activity-bar tree view -------------------------------------------
+    const benchTree = new BenchTreeProvider(currentBench, robotCommand);
+    const treeView = vscode.window.createTreeView('tejoone.bench', {
+        treeDataProvider: benchTree,
+        showCollapseAll: false,
+    });
+    context.subscriptions.push(treeView);
+
     // ----- CodeLens provider for .robot files --------------------------------
     const codeLensProvider = new RobotCodeLensProvider();
     context.subscriptions.push(
         vscode.languages.registerCodeLensProvider(
-            [
-                { pattern: '**/*.robot' },
-                { language: 'robotframework' },
-            ],
-            codeLensProvider
+            [{ pattern: '**/*.robot' }, { language: 'robotframework' }],
+            codeLensProvider,
         )
     );
 
-    // ----- React to setting changes ------------------------------------------
+    // ----- React to setting changes -----------------------------------------
     context.subscriptions.push(
-        vscode.workspace.onDidChangeConfiguration((e) => {
+        vscode.workspace.onDidChangeConfiguration(async (e) => {
             if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.${BENCH_SETTING}`)) {
                 refreshStatusBar();
+                benchTree.refresh();
                 codeLensProvider.refresh();
+                await persistBenchToStateFile(currentBench());
+            }
+            if (e.affectsConfiguration(`${CONFIG_NAMESPACE}.${ROBOT_COMMAND_SETTING}`)) {
+                benchTree.refresh();
             }
         })
     );
@@ -241,16 +282,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
         vscode.commands.registerCommand('tejoone.switchBenchToSim', async () => {
             await setBench('sim');
-            vscode.window.showInformationMessage(
-                'TejoOne bench → simulator'
-            );
+            vscode.window.showInformationMessage('TejoOne bench → simulator');
         }),
 
         vscode.commands.registerCommand('tejoone.switchBenchToHardware', async () => {
             await setBench('pkob4');
-            vscode.window.showInformationMessage(
-                'TejoOne bench → hardware (PKoB4)'
-            );
+            vscode.window.showInformationMessage('TejoOne bench → hardware (PKoB4)');
         }),
 
         vscode.commands.registerCommand('tejoone.runTests', () => {
@@ -265,8 +302,11 @@ export function activate(context: vscode.ExtensionContext): void {
             runRobot('pkob4');
         })
     );
+
+    // ----- Initial reconcile -------------------------------------------------
+    void reconcileStateOnActivation();
 }
 
 export function deactivate(): void {
-    // Nothing to clean up — all disposables are managed via context.subscriptions.
+    // All disposables are managed via context.subscriptions.
 }

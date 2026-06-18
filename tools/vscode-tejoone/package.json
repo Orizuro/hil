@@ -23,10 +23,48 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tejoone",
+          "title": "TejoOne",
+          "icon": "media/tejoone.svg"
+        }
+      ]
+    },
+    "views": {
+      "tejoone": [
+        {
+          "id": "tejoone.bench",
+          "name": "Bench",
+          "contextualTitle": "TejoOne"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "tejoone.pickBench",
+          "when": "view == tejoone.bench",
+          "group": "navigation@1"
+        },
+        {
+          "command": "tejoone.runTestsOnSim",
+          "when": "view == tejoone.bench",
+          "group": "navigation@2"
+        },
+        {
+          "command": "tejoone.runTestsOnHardware",
+          "when": "view == tejoone.bench",
+          "group": "navigation@3"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "tejoone.pickBench",
-        "title": "TejoOne: Pick Bench…"
+        "title": "TejoOne: Pick Bench…",
+        "icon": "$(arrow-swap)"
       },
       {
         "command": "tejoone.switchBenchToSim",
@@ -38,15 +76,18 @@
       },
       {
         "command": "tejoone.runTests",
-        "title": "TejoOne: Run Robot Tests (current bench)"
+        "title": "TejoOne: Run Robot Tests (current bench)",
+        "icon": "$(play)"
       },
       {
         "command": "tejoone.runTestsOnSim",
-        "title": "TejoOne: Run Robot Tests on Simulator"
+        "title": "TejoOne: Run Robot Tests on Simulator",
+        "icon": "$(server-process)"
       },
       {
         "command": "tejoone.runTestsOnHardware",
-        "title": "TejoOne: Run Robot Tests on Hardware (PKoB4)"
+        "title": "TejoOne: Run Robot Tests on Hardware (PKoB4)",
+        "icon": "$(circuit-board)"
       }
     ],
     "configuration": {

@@ -9,7 +9,10 @@ point it at.
 
 ## What it does
 
-- **Status bar item:** shows the current bench (`Bench: hardware` or
+- **Activity-bar tab ("TejoOne"):** a dedicated sidebar with a Bench view.
+  Title-bar icons run the suite on simulator or hardware in one click. The
+  view shows the current bench and the configured Robot command.
+- **Status bar item:** glance-anywhere indicator (`Bench: hardware` or
   `Bench: simulator`). Click to switch.
 - **Commands** (Command Palette):
   - `TejoOne: Pick Bench…`
@@ -23,6 +26,29 @@ point it at.
   - `tejoone.bench` — `"sim"` or `"pkob4"` (default `"pkob4"`).
   - `tejoone.robotCommand` — the shell command used to invoke Robot.
     Default: `${workspaceFolder}/.venv/bin/robot tests/`.
+
+## How the bench selection reaches every runner
+
+The extension persists the bench choice in two places so that **any**
+Robot runner — not just our own commands — uses the right backend:
+
+1. **`TEJOONE_BENCH` env var** is set on every "Run Robot Tests" command
+   the extension launches.
+2. **`<workspace>/.tejoone/state.json`** is written on every bench switch
+   (and reconciled on activation). `MdbLibrary.py` reads this file when
+   the env var isn't set.
+
+That covers all the realistic invocation paths:
+
+| Runner                                 | How bench is found        |
+|----------------------------------------|---------------------------|
+| Our `Run Robot Tests on …` commands    | `TEJOONE_BENCH` env       |
+| Robot Framework Test Explorer (LSP)    | `.tejoone/state.json`     |
+| Plain `.venv/bin/robot tests/`         | `.tejoone/state.json`     |
+| CI explicitly setting `TEJOONE_BENCH`  | env var (wins)            |
+
+The `.tejoone/` folder is gitignored (root `.gitignore` plus a defensive
+`.tejoone/.gitignore` written by the extension).
 
 Each "Run Robot Tests" command opens a **fresh terminal** with
 `TEJOONE_BENCH` set, so the env is always correct and sim/hardware runs
@@ -69,16 +95,19 @@ code --uninstall-extension tejoone.tejoone-bench
 
 ## How it integrates with the rest of the project
 
-The extension does not modify Robot suites or the `MdbLibrary` library. It
-only sets `TEJOONE_BENCH` before invoking Robot.
+The extension does not modify `.robot` test files. It owns three small
+seams:
 
-`MdbLibrary.connect_pkob4()` reads `TEJOONE_BENCH` at runtime:
+1. Sets `TEJOONE_BENCH` env var when launching Robot itself.
+2. Writes `<workspace>/.tejoone/state.json` on every bench change.
+3. Sets `ROBOT_OPTIONS=--outputdir results/<slug>/<bench>` so output
+   lands in an organised tree.
 
-| `TEJOONE_BENCH` | Result                       |
-|-----------------|------------------------------|
-| *(unset)*       | PKoB4 hardware (default)     |
-| `pkob4`         | PKoB4 hardware (explicit)    |
-| `sim`           | MPLAB Simulator              |
+`MdbLibrary.connect_pkob4()` resolves the bench with this precedence:
+
+1. `TEJOONE_BENCH` environment variable (if set).
+2. `.tejoone/state.json` walking up from CWD until `.git`.
+3. Default: `pkob4`.
 
 So the extension and the CLI are interchangeable — running
 
@@ -86,7 +115,10 @@ So the extension and the CLI are interchangeable — running
 TEJOONE_BENCH=sim .venv/bin/robot tests/
 ```
 
-is the same as pressing "Run on simulator" in the editor.
+is the same as pressing "Run on simulator" in the editor. And tests
+launched through the Robot Framework Test Explorer — which spawns
+`robot` directly without env injection — still find the right bench via
+the state file.
 
 ## Future work
 
